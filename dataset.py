@@ -18,11 +18,14 @@ class Seaice(Dataset):
     def __init__(self, opt, transform=None):
         self.datapath = opt.input_path
         self.imgpath = os.path.join(self.datapath,'image')
+        self.gtpath = os.path.join(self.datapath,'gt')
         self.transform = transform
+        self.imgnamelist = os.listdir(self.imgpath)
+        self.gtnamelist = os.listdir(self.gtpath)
         
     def __getitem__(self, idx):
-        imgname = os.path.join(self.datapath, 'image', '{}.tif'.format(idx+1))
-        gtname = os.path.join(self.datapath, 'gt', '{}.png'.format(idx+1))
+        imgname = os.path.join(self.datapath, 'image', self.imgnamelist[idx])
+        gtname = os.path.join(self.datapath, 'gt', self.gtnamelist[idx])
         
         '''这里可以使用常见的 PIL 或者 opencv 来进行读取'''
         # PIL 是基于 python 优化的，速度会快一些，但需要转化为 numpy
@@ -47,7 +50,7 @@ class Seaice(Dataset):
     
     
     def __len__(self):
-        return len(os.listdir(self.imgpath))
+        return len(self.imgnamelist)
 
 
 
@@ -60,5 +63,6 @@ if __name__ == '__main__':
     trainset = Seaice(opt, transform=None)
     
     lens = len(trainset)
+    print(lens)
     for i in range(lens):
         print(trainset[i][0].shape, trainset[i][1].shape)

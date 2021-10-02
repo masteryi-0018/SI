@@ -17,9 +17,8 @@ import param
 
 def sizeto512(opt):
     trainset = dataset.Seaice(opt, transform=None)
-    # datapath = opt.input_path
     outpath = 'F:\seaice_512'
-    # c1 = c2 = c3 = 0
+    c1 = c2 = c3 = 0
     
     size = 512
     name = 1
@@ -32,6 +31,7 @@ def sizeto512(opt):
             cv2.imwrite(os.path.join(outpath, 'image', '{}.tif'.format(name)), img)
             cv2.imwrite(os.path.join(outpath, 'gt', '{}.png'.format(name)), gt)
             name += 1
+            c1 += 1
         
         elif trainset[i][0].shape[1] == 1024:
             # imgbig = cv2.imread(os.path.join(datapath, 'image', '{}.tif'.format(i+1)))
@@ -51,6 +51,7 @@ def sizeto512(opt):
                     cv2.imwrite(os.path.join(outpath, 'image', '{}.tif'.format(name)), img)
                     cv2.imwrite(os.path.join(outpath, 'gt', '{}.png'.format(name)), gt)
                     name += 1
+            c2 += 1
             
         elif trainset[i][0].shape[1] == 2048:
             # imgbig = cv2.imread(os.path.join(datapath, 'image', '{}.tif'.format(i+1)))
@@ -69,11 +70,13 @@ def sizeto512(opt):
                     cv2.imwrite(os.path.join(outpath, 'image', '{}.tif'.format(name)), img)
                     cv2.imwrite(os.path.join(outpath, 'gt', '{}.png'.format(name)), gt)
                     name += 1
+            c3 += 1
                     
     
     # print(c1, c2, c3)
     # 1412 66 22
     # 固定尺寸后：66*4 + 22*16 = 264 + 352 = 616
+    # 删减后 1359 66 22 共 1412+616-53=1975
 
 
 
@@ -81,7 +84,7 @@ def augment(opt):
     trainset = dataset.Seaice(opt, transform=None)
     outpath = 'F:\seaice_all8'
     
-    # negtive = 0
+    negtive = 0
     name = 1
     for i in range(len(trainset)):
         img = trainset[i][0]
@@ -93,6 +96,7 @@ def augment(opt):
             cv2.imwrite(os.path.join(outpath, 'image', '{}.tif'.format(name)), img)
             cv2.imwrite(os.path.join(outpath, 'gt', '{}.png'.format(name)), gt)
             name += 1
+            negtive += 1
         
         else:
             # print(img.type) 'numpy.ndarray' object has no attribute 'type'
@@ -147,11 +151,12 @@ def augment(opt):
             cv2.imwrite(os.path.join(outpath, 'gt', '{}.png'.format(name)), gt_h270)
             name += 1
         
-        print(name)
-    # print(negtive, len(trainset)-negtive)
+        # print(name)
+    print(negtive, len(trainset)-negtive)
     # 1544 484
     # pos8：只有正样本增强8倍 484*8=3872  3872/1544=2.5
     # all8：正样本增强8倍 负样本不增强 484*8=3872  3872/1544=2.5
+    # 删减后 1500 475 475*8=3800
 
 
 
@@ -185,6 +190,7 @@ def augment_bsc(opt):
         
         print(name)
     # all8：正样本增强16倍 负样本不增强 484*16=7744  7744/1544=5
+    # 删减后 475*16=7600 负1500 共9100
 
 
 

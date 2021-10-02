@@ -21,6 +21,9 @@ import matplotlib.pyplot as plt
 import param
 import dataset
 import deeplab.deeplabv3plus as dl
+import hrocr.seg_hrnet_ocr as ho
+import segmenter.factory as ft
+
 from metrics import SegmentationMetric
 from losses import CrossEntropyLoss2d, FocalLoss, DiceLoss, LovaszSoftmax
 
@@ -31,7 +34,7 @@ def solver(opt):
     transform = transforms.Compose([transforms.ToTensor()])
     data = dataset.Seaice(opt, transform=transform)
     
-    train_size = int(0.7 * len(data))
+    train_size = int(0.8 * len(data))
     valid_size = len(data) - train_size
     # 3791 1624
     trainset, validset = random_split(dataset=data, lengths=[train_size, valid_size], generator=torch.Generator().manual_seed(0))
@@ -42,13 +45,9 @@ def solver(opt):
     
     
     # 模型 损失 优化器 学习率
-    model = dl.DeepLabV3Plus(
-        n_classes=2,
-        n_blocks=[3, 4, 23, 3],
-        atrous_rates=[6, 12, 18],
-        multi_grids=[1, 2, 4],
-        output_stride=16,
-    )
+    # model = dl.DeepLabV3Plus(n_classes=2, n_blocks=[3, 4, 23, 3], atrous_rates=[6, 12, 18], multi_grids=[1, 2, 4], output_stride=16)
+    # model = ho.HighResolutionNet()
+    model = ft.create_segmenter(patch_size=16)
     
     # criterion = nn.CrossEntropyLoss()
     # BCEwithlogitsloss = BCELoss + Sigmoid
@@ -57,7 +56,7 @@ def solver(opt):
     # criterion = nn.BCELoss()
     optimizer = optim.Adam(model.parameters(), opt.lr, (opt.b1, opt.b2))
     # Note that step should be called after validate()
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.5, patience=5, verbose=True, threshold=0.001)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=10, verbose=True, threshold=0.001)
     
     # CE Focal Dice
     criterion = CrossEntropyLoss2d()
@@ -131,7 +130,7 @@ def solver(opt):
         print("Valid: epoch:{}/{}, loss:{:.4f}, fwiou:{:.4f}".
              format(epoch+1, opt.n_epochs, val_loss, val_fwiou), flush = True)
         # 验证完进行学习率监测
-        scheduler.step(val_loss)
+        # scheduler.step(val_loss)
         
         
         # 保存模型 每个epoch的参数
@@ -213,9 +212,9 @@ def train(trainloader, model, criterion, optimizer, device, n_epochs, n_batchs, 
             
             
         # 对于batch
-        # print("epoch:{}/{}, batch:{}/{}, loss:{:.4f}, fwiou:{:.4f}".
-              # format(epoch+1, opt.n_epochs, batch_idx+1, n_batchs,
-                     # running_loss/(batch_idx+1), running_fwiou/(batch_idx+1)), flush = True)
+        print("epoch:{}/{}, batch:{}/{}, loss:{:.4f}, fwiou:{:.4f}".
+              format(epoch+1, opt.n_epochs, batch_idx+1, n_batchs,
+                     running_loss/(batch_idx+1), running_fwiou/(batch_idx+1)), flush = True)
     
     return losses, fwious
 
@@ -330,5 +329,4 @@ if __name__ == '__main__':
     plt.ylabel('Fwiou')
     plt.show()
     plt.savefig(os.path.join(opt.image_path, 'fwiou.png'))
-    
     
