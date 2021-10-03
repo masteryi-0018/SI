@@ -22,16 +22,23 @@ class PatchEmbedding(nn.Module):
         if image_size[0] % patch_size != 0 or image_size[1] % patch_size != 0:
             raise ValueError("image dimensions must be divisible by the patch size")
         self.grid_size = image_size[0] // patch_size, image_size[1] // patch_size
-        self.num_patches = self.grid_size[0] * self.grid_size[1]
+        self.num_patches = self.grid_size[0] * self.grid_size[1] # (512/16)^2=2^10=1024
         self.patch_size = patch_size
-
+        
+        # 这是唯一的embed 一个大核卷积，kernel_size=patch_size=16
         self.proj = nn.Conv2d(
             channels, embed_dim, kernel_size=patch_size, stride=patch_size
         )
 
     def forward(self, im):
         B, C, H, W = im.shape
+        
+        # 把一个多维的张量拉平
+        # t.flatten(start_dim=1) # start_dim=1表示对第2个轴开始进行压缩，第一个轴不变
+        # 这里表示对
         x = self.proj(im).flatten(2).transpose(1, 2)
+        # print(x.shape) # torch.Size([1, 768, 32, 32]) 为什么是32：因为卷积核16 步长也16 512中一共就32个16
+        # 为什么是768 因为论文中将其reshape后，768 = P^2*C = (16)^2*3
         return x
 
 
@@ -73,6 +80,7 @@ class VisionTransformer(nn.Module):
 
         # cls and pos tokens
         self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
+        # 这里加distilled有3个，不加只有最基本的
         self.distilled = distilled
         if self.distilled:
             self.dist_token = nn.Parameter(torch.zeros(1, 1, d_model))
@@ -114,17 +122,28 @@ class VisionTransformer(nn.Module):
     def forward(self, im, return_features=False):
         B, _, H, W = im.shape
         PS = self.patch_size
+        # print('b h w ps:', B, H, W, PS)
 
         x = self.patch_embed(im)
+        # print('patch_embed-shape:', x.shape) # torch.Size([1, 1024, 768])
+        
+        # expand就是将形状扩充为B个
         cls_tokens = self.cls_token.expand(B, -1, -1)
+        # print(cls_tokens.shape) # torch.Size([1, 1, 768])
+        
+        # 根据是否distill，cat不同的内容
         if self.distilled:
             dist_tokens = self.dist_token.expand(B, -1, -1)
             x = torch.cat((cls_tokens, dist_tokens, x), dim=1)
         else:
-            x = torch.cat((cls_tokens, x), dim=1)
+            x = torch.cat((cls_tokens, x), dim=1) # 给x加上了cls_tokens，不懂
 
         pos_embed = self.pos_embed
-        num_extra_tokens = 1 + self.distilled
+        num_extra_tokens = 1 + self.distilled # 为False时就是0，第一次见这种表达式
+        # print(pos_embed.shape, num_extra_tokens) # torch.Size([1, 1025, 768]) 1
+        # print(x.shape)
+        
+        # 之前都加上了，所以是相等的
         if x.shape[1] != pos_embed.shape[1]:
             pos_embed = resize_pos_embed(
                 pos_embed,
@@ -132,13 +151,18 @@ class VisionTransformer(nn.Module):
                 (H // PS, W // PS),
                 num_extra_tokens,
             )
+        
         x = x + pos_embed
         x = self.dropout(x)
+        # print(x.shape) # torch.Size([1, 1025, 768]) 为什么直接加起来
         
+        '''重点，这是layer层的transformer'''
         for blk in self.blocks:
             x = blk(x)
         x = self.norm(x)
-
+        # print(x.shape) # torch.Size([1, 1025, 768]) 加了层Normalization 形状没有改变
+        
+        # 这里是返回值，因为有decoder，所以不直接返回结果，返回特征
         if return_features:
             return x
 
@@ -184,3 +208,4 @@ class VisionTransformer(nn.Module):
                 x = blk(x)
             else:
                 return blk(x, return_attention=True)
+

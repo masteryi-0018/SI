@@ -36,7 +36,7 @@ def solver(opt):
     
     train_size = int(0.8 * len(data))
     valid_size = len(data) - train_size
-    # 3791 1624
+    # 自动分，函数很好用
     trainset, validset = random_split(dataset=data, lengths=[train_size, valid_size], generator=torch.Generator().manual_seed(0))
     
     # 超算 num_workers=16, pin_memory=True, drop_last=True
@@ -56,7 +56,7 @@ def solver(opt):
     # criterion = nn.BCELoss()
     optimizer = optim.Adam(model.parameters(), opt.lr, (opt.b1, opt.b2))
     # Note that step should be called after validate()
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=10, verbose=True, threshold=0.001)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.1, verbose=True)
     
     # CE Focal Dice
     criterion = CrossEntropyLoss2d()
@@ -114,7 +114,7 @@ def solver(opt):
         starttime = datetime.now()
         
         # 训练
-        losses, fwious = train(trainloader, model, criterion, optimizer, device, opt.n_epochs, n_batchs, epoch)
+        losses, fwious = train(trainloader, model, criterion, optimizer, device, opt.n_epochs, n_batchs, epoch, opt)
         
         training_loss = sum(losses)/len(losses) # losses是列表，取所有batch的平均值作为epoch的loss
         training_fwiou = sum(fwious)/len(fwious)
@@ -124,13 +124,13 @@ def solver(opt):
         
         
         # 验证
-        val_losses, val_fwious = valid(validloader, model, criterion, optimizer, device, opt.n_epochs, epoch)
+        val_losses, val_fwious = valid(validloader, model, criterion, optimizer, device, opt.n_epochs, epoch, opt)
         val_loss = sum(val_losses)/len(val_losses)
         val_fwiou = sum(val_fwious)/len(val_fwious)
         print("Valid: epoch:{}/{}, loss:{:.4f}, fwiou:{:.4f}".
              format(epoch+1, opt.n_epochs, val_loss, val_fwiou), flush = True)
         # 验证完进行学习率监测
-        # scheduler.step(val_loss)
+        scheduler.step()
         
         
         # 保存模型 每个epoch的参数
@@ -149,7 +149,7 @@ def solver(opt):
 
 
 
-def train(trainloader, model, criterion, optimizer, device, n_epochs, n_batchs, epoch):
+def train(trainloader, model, criterion, optimizer, device, n_epochs, n_batchs, epoch, opt):
     running_loss = 0.0
     losses = []
     running_fwiou = 0.0
@@ -220,7 +220,7 @@ def train(trainloader, model, criterion, optimizer, device, n_epochs, n_batchs, 
 
 
 
-def valid(validloader, model, criterion, optimizer, device, n_epochs, epoch):
+def valid(validloader, model, criterion, optimizer, device, n_epochs, epoch, opt):
     val_losses = []
     val_fwious = []
     model.eval()

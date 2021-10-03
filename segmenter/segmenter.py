@@ -49,8 +49,10 @@ class Segmenter(nn.Module):
         # print('decoder-shape:', masks.shape) # ([1, 2, 32, 32])
         
         masks = F.interpolate(masks, size=(H, W), mode="bilinear")
+        '''本身只有32大小，直接进行线性上采样是否会丢失很多精度'''
+        # 这是担心大小不同的问题，没有用到
         masks = unpadding(masks, (H_ori, W_ori))
-        # print('finalout-shape:', masks.shape) # ([1, 2, 512, 512])
+        # print('finalout-shape:', masks.shape) # ([1, 2, 512, 512]) 上采样至原大小
 
         return masks
 

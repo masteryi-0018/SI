@@ -2,7 +2,7 @@
 
 高分大赛——面向海洋一号可见光图像中海冰目标监测 -> http://gaofen-challenge.com
 
-### 数据
+### 数据处理
 
 1. 数据清洗
 
@@ -20,7 +20,7 @@
 | :-: | :-: | :-: |
 | 1359 | 66 | 22 |
 
-下一步是裁剪，将其裁剪至大小均为`512 * 512`，即`1024 * 1024`为4张图，`2048 * 2048`为16张图：
+下一步是裁剪，将其裁剪至大小均为`512*512`，即`1024*1024`为4张图，`2048*2048`为16张图：
 于是样本总数为 `1359 + 66*4 + 22*16 = 1359 + 264 + 352 = 1975`
 
 其次发现数据集中负样本/困难负样本较多，正负样本不均衡，于是对其进行统计：
@@ -44,11 +44,36 @@
 ### 模型
 
 1. deeplabv3plus（deeplab）
+   - n_epoch = 300
+   - lr = 0.001
+
 2. HR_OCR
+   - n_epoch = 300
+   - lr = 0.001
+
 3. segmenter
+    - 由于官方代码给了2种decoder架构，以下分别讨论
+    - 排除错误：因为源代码使用了`rearrange`函数进行reshape，而我直接进行reshape，导致loss不下降
+    - 解决方案：先交换维度，再reshape就可以
+
+    ```python
+    x = x.permute(0,2,1)
+    x = x.reshape(1, self.n_cls, GS, -1)
+    ```
+
+  - DecoderLinear
+    - 经过一系列尝试，发现这个None-CNN的网络对学习率十分敏感
+    - lr = 0.00001
+    - 训练速度较快
+    - 在训练10轮时应当再次调整学习率
+
+  - MaskTransformer
+    - lr = 0.00001
+    - 待补充
+
 4. 待补充
 
-### 损失
+### 损失函数
 
 1. CE
 2. Focal
@@ -67,12 +92,11 @@
 
 ### 超参
 
-- train / valid = 7 / 3
-- n_epoch = 100
-- batch_size = 8（模型为segmenter时需要调整为1）
+- train / valid = 8 / 2
+- batch_size = 16（模型为segmenter时需要调整为1）
 - transform = transforms.Compose([transforms.ToTensor()])（默认）
 - optimizer = optim.Adam(model.parameters())（默认）
-- scheduler = None（未添加）
+- scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.1)
 
 ### 文件说明
 
@@ -81,13 +105,14 @@
 - deeplab
 - hrocr
 - segmenter
-  dataset.py  ——读取数据集
-  losses.py   ——各种损失函数
-  main.py     ——程序入口
-  metrics.py  ——各种评价指标
-  param.py    ——参数和路径
-  preposs.py  ——对数据集预处理
-  readme.md   ——readme
-  solver.py   ——训练和验证
+
+dataset.py  ——读取数据集
+losses.py   ——各种损失函数
+main.py     ——程序入口
+metrics.py  ——各种评价指标
+param.py    ——参数和路径
+preposs.py  ——对数据集预处理
+readme.md   ——readme
+solver.py   ——训练和验证
 ```
 

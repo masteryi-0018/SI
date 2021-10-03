@@ -16,7 +16,7 @@ class DecoderLinear(nn.Module):
         super().__init__()
 
         self.d_encoder = d_encoder
-        # d_encoder 为 encoder 的输出，就是下面的最后一维
+        # d_encoder 为 encoder 的输出，就是下面forward的最后一维
         self.patch_size = patch_size
         self.n_cls = n_cls
 
@@ -28,11 +28,14 @@ class DecoderLinear(nn.Module):
         return set()
 
     def forward(self, x, im_size):
-        # print(x.shape) # torch.Size([1, 1024, 768])
+        # print(x.shape) # torch.Size([1, 1024, 768]) 这里已经在segmenter里面去掉了cls_token，所以变为1024
         H, W = im_size
         GS = H // self.patch_size
         x = self.head(x)
-        x = rearrange(x, "b (h w) c -> b c h w", h=GS)
+        # print(x.shape) # ([1, 1024, 2]) 只是线性
+        x = x.permute(0,2,1)
+        x = x.reshape(1, self.n_cls, GS, -1)
+        # x = rearrange(x, "b (h w) c -> b c h w", h=GS)
 
         return x
 
@@ -40,6 +43,7 @@ class DecoderLinear(nn.Module):
 
 class MaskTransformer(nn.Module):
     # 这里的 n_layers 不需要很多 一般为1或者2
+    # 这里的 d_model=768 也和之前的不一样
     def __init__(
         self,
         patch_size=8,
@@ -105,11 +109,12 @@ class MaskTransformer(nn.Module):
         masks = patches @ cls_seg_feat.transpose(1, 2)
         masks = self.mask_norm(masks)
         
-        
-        # masks = masks.reshape()
-        masks = rearrange(masks, "b (h w) n -> b n h w", h=int(GS))
+        masks = masks.permute(0,2,1)
+        masks = masks.reshape(1, self.n_cls, GS, -1)
+        # print(masks.shape) # ([1, 2, 32, 32])
+        # masks = rearrange(masks, "b (h w) n -> b n h w", h=int(GS))
         # einops 的 rearrange 函数是一个对张量进行操作的函数，比较优雅
-        # print('rearrange-shape', masks.shape) ([1, 2, 16, 16])
+        # print('rearrange-shape', masks.shape) # ([1, 2, 32, 32])
 
         return masks
 

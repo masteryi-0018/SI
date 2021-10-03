@@ -160,6 +160,28 @@ def augment(opt):
 
 
 
+def augment_pos(opt):
+    trainset = dataset.Seaice(opt, transform=None)
+    outpath = 'F:\seaice_pos'
+    
+    # negtive = 0
+    name = 1
+    for i in range(len(trainset)):
+        img = trainset[i][0]
+        gt = trainset[i][1]
+        
+        # 判断np数组是否全0（全0表示为负样本）
+        if not np.all(gt == 0):
+            # negtive += 1
+            cv2.imwrite(os.path.join(outpath, 'image', '{}.tif'.format(name)), img)
+            cv2.imwrite(os.path.join(outpath, 'gt', '{}.png'.format(name)), gt)
+            name += 1
+        
+        print(name)
+    # pos 只有正样本
+
+
+
 def augment_bsc(opt):
     trainset = dataset.Seaice(opt, transform=None)
     outpath = 'F:\seaice_all16'
@@ -294,5 +316,5 @@ if __name__ == '__main__':
     opt = param.parser()
     # sizeto512(opt)
     # augment(opt)
-    augment_bsc(opt)
-    
+    # augment_bsc(opt)
+    augment_pos(opt)

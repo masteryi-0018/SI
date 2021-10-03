@@ -13,16 +13,16 @@ def parser():
     parser = argparse.ArgumentParser()
     
     # epoch和batch
-    parser.add_argument("--n_epochs", type=int, default=100)
+    parser.add_argument("--n_epochs", type=int, default=3)
     parser.add_argument("--batch_size", type=int, default=1)
 
     # Adma参数
-    parser.add_argument("--lr", type=float, default=0.001)
+    parser.add_argument("--lr", type=float, default=0.00001)
     parser.add_argument("--b1", type=float, default=0.9)
     parser.add_argument("--b2", type=float, default=0.999)
 
     # 输入输出路径
-    parser.add_argument("--input_path", type=str, default='F:\seaice_all8')
+    parser.add_argument("--input_path", type=str, default='F:\seaice_pos')
     parser.add_argument("--image_path", type=str, default='F:\seaice_outimg')
     parser.add_argument("--model_path", type=str, default='F:\seaice_model')
 
