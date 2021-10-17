@@ -281,7 +281,7 @@ def lovasz_softmax_flat(probas, labels, classes='present'):
     class_to_sum = list(range(C)) if classes in ['all', 'present'] else classes
     for c in class_to_sum:
         fg = (labels == c).float() # foreground for class c
-        if (classes is 'present' and fg.sum() == 0):
+        if (classes == 'present' and fg.sum() == 0):
             continue
         if C == 1:
             if len(classes) > 1:
@@ -346,3 +346,25 @@ def mean(l, ignore_nan=False, empty=0):
     if n == 1:
         return acc
     return acc / n
+
+
+'''OHEM'''
+def ohem_loss(criterion, premax, gt, keep_num):
+    if criterion == 'ce':
+        criterion = CrossEntropyLoss2d(reduction="none")
+    elif criterion == 'lovasz':
+        criterion = LovaszSoftmax() # 暂时不会使用
+    elif criterion == 'focal':
+        criterion = FocalLoss(reduction="none")
+    elif criterion == 'dice':
+        criterion = DiceLoss(reduction="none")
+    
+    loss = criterion(premax, gt)
+    
+    h, w = loss[0].shape
+    loss_sorted, idx = torch.sort(loss, descending=True)
+    # print(loss_sorted.shape) # torch.Size([4, 640, 640])
+    loss_keep = loss_sorted[:keep_num]
+    # print(loss_keep.shape) # torch.Size([3, 640, 640]) 可以发现少了一个样本的loss
+    
+    return loss_keep.sum() / (keep_num*h*w)

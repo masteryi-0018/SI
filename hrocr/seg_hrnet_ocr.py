@@ -431,6 +431,7 @@ class HighResolutionNet(nn.Module):
         self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=2, padding=1,
                                bias=False)
         self.bn1 = BatchNorm2d(64, momentum=BN_MOMENTUM)
+        # 这里将特征保持在256没有改变，即下面的stride改为1
         self.conv2 = nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1,
                                bias=False)
         self.bn2 = BatchNorm2d(64, momentum=BN_MOMENTUM)
@@ -596,9 +597,12 @@ class HighResolutionNet(nn.Module):
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
+        # print(x.shape) # ([1, 64, 256, 256])
         x = self.conv2(x)
         x = self.bn2(x)
         x = self.relu(x)
+        # print(x.shape) # ([1, 64, 128, 128])
+        
         x = self.layer1(x)
 
         x_list = []
@@ -630,7 +634,11 @@ class HighResolutionNet(nn.Module):
             else:
                 x_list.append(y_list[i])
         x = self.stage4(x_list)
-
+        
+        # 4个不同尺度的特征
+        # print(x[0].shape, x[1].shape, x[2].shape, x[3].shape)
+        # torch.Size([1, 48, 128, 128]) torch.Size([1, 96, 64, 64]) torch.Size([1, 192, 32, 32]) torch.Size([1, 384, 16, 16])
+        
         # Upsampling
         x0_h, x0_w = x[0].size(2), x[0].size(3)
         x1 = F.interpolate(x[1], size=(x0_h, x0_w),
@@ -655,13 +663,14 @@ class HighResolutionNet(nn.Module):
         out = self.cls_head(feats)
         
         '''4倍上采样'''
+        # 上面feature为1/2，这里就上采样2倍
         out = F.interpolate(out, scale_factor=4, mode='bilinear', align_corners=ALIGN_CORNERS)
         out_aux = F.interpolate(out_aux, scale_factor=4, mode='bilinear', align_corners=ALIGN_CORNERS)
 
         out_aux_seg.append(out_aux)
         out_aux_seg.append(out)
 
-        return out
+        return out_aux
 
     def init_weights(self, pretrained='',):
         logger.info('=> init weights from normal distribution')

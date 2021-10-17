@@ -41,37 +41,53 @@
 
 之后会对不同比例的数据集进行验证
 
+- 有文章指出多尺度训练甚至比前几种数据增强的总和还要好
+
 ### 模型
 
-1. deeplabv3plus（deeplab）
-   - n_epoch = 300
-   - lr = 0.001
+1. deeplab
 
-2. HR_OCR
-   - n_epoch = 300
    - lr = 0.001
+   - Lovasz loss
+   - scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.5)
+
+2. hrocr
+
+   - lr = 0.001
+   - Lovasz loss
+   - scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.5)
+   - **虽然是平行连接多个CNN，但是最终计算loss时只用第一个高分辨率子网络的输出，即out_aux**
 
 3. segmenter
-    - 由于官方代码给了2种decoder架构，以下分别讨论
-    - 排除错误：因为源代码使用了`rearrange`函数进行reshape，而我直接进行reshape，导致loss不下降
-    - 解决方案：先交换维度，再reshape就可以
-
+    
+    - lr = 0.00001
+    - Lovasz loss
+    - scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
+    
+    - 对学习率十分敏感
+    
+    - 由于官方代码给了2种decoder架构：`DecoderLinear`、`MaskTransformer`
+    
+    - 问题
+    
+      - 排除错误：因为源代码使用了`rearrange`函数进行reshape，而我直接进行reshape，导致loss不下降
+    
+      - 解决方案：先交换维度，再reshape就可以
+    
     ```python
     x = x.permute(0,2,1)
     x = x.reshape(1, self.n_cls, GS, -1)
     ```
 
-  - DecoderLinear
-    - 经过一系列尝试，发现这个None-CNN的网络对学习率十分敏感
-    - lr = 0.00001
-    - 训练速度较快
-    - 在训练10轮时应当再次调整学习率
+4. segformer
 
-  - MaskTransformer
-    - lr = 0.00001
-    - 待补充
+   - lr = 0.00001
+   - Lovasz loss
+   - scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
 
-4. 待补充
+   - encoder有 B0-B5 共6种情况，模型逐渐变大，指标也逐渐提升
+
+5. 待补充
 
 ### 损失函数
 
@@ -93,10 +109,33 @@
 ### 超参
 
 - train / valid = 8 / 2
-- batch_size = 16（模型为segmenter时需要调整为1）
+- n_epoch = 300
+- batch_size = 16（模型为transformer架构时需要调整为1）
 - transform = transforms.Compose([transforms.ToTensor()])（默认）
 - optimizer = optim.Adam(model.parameters())（默认）
-- scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.1)
+- 训练策略
+  - 多尺度训练，分别选择1.25x、1x、0.75x，共3种情况
+    - 依次循环进行训练
+    - 每一个epoch随机选择其中一个尺度进行训练（ours）
+  - OHEM，使用了CE loss
+    - 在50轮之后加入OHEM
+    - 下一步将CE loss换成Lovasz
+
+### 后处理
+
+1. 多模型融合
+   - 软投票
+   - 硬投票
+   - 心得：如果选择的模型本身指标不高，会导致低指标模型将高指标模型性能拉低的情况，目前还没有很好的待融合模型
+2. CRF
+   - 有的模型上升，有的模型下降
+   - CRF与原始预测图片加权融合，具体实验结果也需要分情况讨论
+3. 旋转预测
+   - 指标一般都会提高
+4. 裁剪预测（对于1024与2048的尺寸，裁剪预测再拼接）
+   - 直接裁剪拼接
+   - 重叠裁剪拼接（需要避免分块效应）
+   - 都有提高，但是直接裁剪效果比重叠裁剪好
 
 ### 文件说明
 
@@ -104,6 +143,7 @@
 以下文件夹为模型模块
 - deeplab
 - hrocr
+- segformer
 - segmenter
 
 dataset.py  ——读取数据集
@@ -114,5 +154,6 @@ param.py    ——参数和路径
 preposs.py  ——对数据集预处理
 readme.md   ——readme
 solver.py   ——训练和验证
+visualize   --可视化
 ```
 

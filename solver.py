@@ -17,37 +17,49 @@ from torchvision.utils import save_image
 from datetime import datetime
 from torch.utils.data import random_split
 import matplotlib.pyplot as plt
+import random
 
 import param
 import dataset
+import visualize
 import deeplab.deeplabv3plus as dl
 import hrocr.seg_hrnet_ocr as ho
 import segmenter.factory as ft
+import segformer.segformer_pytorch as sf
 
 from metrics import SegmentationMetric
-from losses import CrossEntropyLoss2d, FocalLoss, DiceLoss, LovaszSoftmax
+from losses import *
 
 
 
 def solver(opt):
     # 数据集和变换
-    transform = transforms.Compose([transforms.ToTensor()])
+    # 随机应用一种resize
+    '''
+    transform_1 = transforms.Compose([transforms.ToTensor()])
+    transform_2 = transforms.Compose([transforms.ToTensor(), transforms.Resize(640)])
+    transform_3 = transforms.Compose([transforms.ToTensor(), transforms.Resize(384)])
+    transform = transforms.RandomChoice([transform_1, transform_2, transform_3])
+    
     data = dataset.Seaice(opt, transform=transform)
+    
     
     train_size = int(0.8 * len(data))
     valid_size = len(data) - train_size
     # 自动分，函数很好用
-    trainset, validset = random_split(dataset=data, lengths=[train_size, valid_size], generator=torch.Generator().manual_seed(0))
+    trainset, validset = random_split(dataset=data, lengths=[train_size, valid_size], generator=torch.Generator().manual_seed(1))
     
     # 超算 num_workers=16, pin_memory=True, drop_last=True
     trainloader = DataLoader(dataset=trainset, batch_size=opt.batch_size, shuffle=False, drop_last=True)
     validloader = DataLoader(dataset=validset, batch_size=opt.batch_size, shuffle=False, drop_last=True)
+    '''
     
     
     # 模型 损失 优化器 学习率
     # model = dl.DeepLabV3Plus(n_classes=2, n_blocks=[3, 4, 23, 3], atrous_rates=[6, 12, 18], multi_grids=[1, 2, 4], output_stride=16)
     # model = ho.HighResolutionNet()
-    model = ft.create_segmenter(patch_size=16)
+    # model = ft.create_segmenter(patch_size=16)
+    model = sf.Segformer(num_classes=2)
     
     # criterion = nn.CrossEntropyLoss()
     # BCEwithlogitsloss = BCELoss + Sigmoid
@@ -56,9 +68,10 @@ def solver(opt):
     # criterion = nn.BCELoss()
     optimizer = optim.Adam(model.parameters(), opt.lr, (opt.b1, opt.b2))
     # Note that step should be called after validate()
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.1, verbose=True)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5, verbose=True)
     
     # CE Focal Dice
+    # 增加reduction="none" 使其不求平均 返回每个loss，这个在ohem中写了
     criterion = CrossEntropyLoss2d()
     # criterion = FocalLoss()
     # criterion = DiceLoss()
@@ -73,7 +86,7 @@ def solver(opt):
     if torch.cuda.is_available():
         device = torch.device("cuda:0")
         model.to(device)
-        criterion.to(device)
+        # criterion.to(device) # 损失函数需要放在cuda嘛？
         if torch.cuda.device_count() > 1:
             model = nn.DataParallel(model, device_ids=[0,1,2,3])
             model.to(device)
@@ -104,7 +117,7 @@ def solver(opt):
     
     
     # 开始训练
-    n_batchs = len(trainloader)
+    # n_batchs = len(trainloader)
     loss_all = []
     fwiou_all = []
     val_loss_all = []
@@ -112,6 +125,9 @@ def solver(opt):
     
     for epoch in range(opt.n_epochs):
         starttime = datetime.now()
+        
+        trainloader, validloader = datatransform(epoch, opt)
+        n_batchs = len(trainloader)
         
         # 训练
         losses, fwious = train(trainloader, model, criterion, optimizer, device, opt.n_epochs, n_batchs, epoch, opt)
@@ -129,7 +145,7 @@ def solver(opt):
         val_fwiou = sum(val_fwious)/len(val_fwious)
         print("Valid: epoch:{}/{}, loss:{:.4f}, fwiou:{:.4f}".
              format(epoch+1, opt.n_epochs, val_loss, val_fwiou), flush = True)
-        # 验证完进行学习率监测
+        # 验证完进行学习率调整
         scheduler.step()
         
         
@@ -149,6 +165,52 @@ def solver(opt):
 
 
 
+def datatransform(epoch, opt):
+    """
+    random choose transform
+
+    Parameters
+    ----------
+    epoch : TYPE
+        DESCRIPTION.
+    opt : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    trainloader : TYPE
+        DESCRIPTION.
+    validloader : TYPE
+        DESCRIPTION.
+
+    """
+    transform_1 = transforms.Compose([transforms.ToTensor()])
+    transform_2 = transforms.Compose([transforms.ToTensor(), transforms.Resize(640)])
+    transform_3 = transforms.Compose([transforms.ToTensor(), transforms.Resize(384)])
+    
+    # if epoch % 3 == 0:
+        # data = dataset.Seaice(opt, transform=transform_1)
+    # elif epoch % 3 == 1:
+        # data = dataset.Seaice(opt, transform=transform_2)
+    # else:
+        # data = dataset.Seaice(opt, transform=transform_3)
+    # 随机而不是循环训练
+    data = dataset.Seaice(opt, transform=random.choice([transform_1, transform_2, transform_3]))
+    
+    train_size = int(0.8 * len(data))
+    valid_size = len(data) - train_size
+    # 自动分，函数很好用
+    trainset, validset = random_split(dataset=data, lengths=[train_size, valid_size], generator=torch.Generator().manual_seed(1))
+    
+    # 超算 num_workers=16, pin_memory=True, drop_last=True
+    # 这里为什么不能加num_workers=10？
+    trainloader = DataLoader(dataset=trainset, batch_size=opt.batch_size, shuffle=False, drop_last=True, pin_memory=True)
+    validloader = DataLoader(dataset=validset, batch_size=opt.batch_size, shuffle=False, drop_last=True, pin_memory=True)
+    
+    return trainloader, validloader
+
+
+
 def train(trainloader, model, criterion, optimizer, device, n_epochs, n_batchs, epoch, opt):
     running_loss = 0.0
     losses = []
@@ -159,6 +221,7 @@ def train(trainloader, model, criterion, optimizer, device, n_epochs, n_batchs, 
     print('--Started Train and Valid--', flush = True)
     for batch_idx, data in enumerate(trainloader):
         img, gt = data[0], data[1]
+        # print(img.shape, gt.shape) 随机选取transform会造成img和gt的变换不一样的问题，例如图片缩放不同
         
         img = img.to(device)
         gt = gt.to(device)
@@ -166,7 +229,8 @@ def train(trainloader, model, criterion, optimizer, device, n_epochs, n_batchs, 
         # forward
         optimizer.zero_grad()
         predict = model(img)
-        # print(predict.dtype) torch.float32 print(predict.shape) (b 2 512 512)
+        # print(predict.dtype) # torch.float32
+        # print(predict.shape) # (b 2 512 512)
             
             
         premax = torch.sigmoid(predict)
@@ -182,7 +246,14 @@ def train(trainloader, model, criterion, optimizer, device, n_epochs, n_batchs, 
         gt = gt.squeeze(1)
         gt = gt.long()
         # gt进行 CE loss 时需要删除新加的通道，即与premax的形状不同（少了通道维）且pre应为float32 gt为long
-        loss = criterion(premax, gt)
+        
+        # 训练时使用ohem，根据epoch调整
+        if epoch > 40:
+            keepnum = round(opt.batch_size*0.75) if opt.batch_size != 2 else 1
+            loss = ohem_loss('ce', premax, gt, keepnum)
+        else:
+            loss = criterion(premax, gt)
+        
         losses.append(loss.item())
         running_loss += loss.item()
         # print(loss.item()) 是一个数值
@@ -200,7 +271,8 @@ def train(trainloader, model, criterion, optimizer, device, n_epochs, n_batchs, 
         premax_value, premax = torch.max(predict, dim=1, keepdim=True)
         gt = gt.cpu().detach()
         premax = premax.cpu().detach()
-        saveimg(opt, gt, premax, batch_idx, train=True)
+        img = img.cpu().detach()
+        saveimg(opt, img, gt, premax, batch_idx, train=True)
             
         
         # 指标
@@ -247,7 +319,8 @@ def valid(validloader, model, criterion, optimizer, device, n_epochs, epoch, opt
             premax_value, premax = torch.max(predict, dim=1, keepdim=True)
             gt = gt.cpu().detach()
             premax = premax.cpu().detach()
-            saveimg(opt, gt, premax, batch_idx, train=False)
+            img = img.cpu().detach()
+            saveimg(opt, img, gt, premax, batch_idx, train=False)
             
             metric = SegmentationMetric(2)
             metric.addBatch(premax, gt)
@@ -258,7 +331,7 @@ def valid(validloader, model, criterion, optimizer, device, n_epochs, epoch, opt
 
 
 
-def saveimg(opt, gt, premax, batch_idx, train=True):
+def saveimg(opt, img, gt, premax, batch_idx, train=True):
     outimgpath = opt.image_path
     # img = img.cpu()
     # premax = premax * 255
@@ -267,13 +340,19 @@ def saveimg(opt, gt, premax, batch_idx, train=True):
         train = 'train'
     else:
         train = 'valid'
+    outimgname = os.path.join(outimgpath, train, '{}.png'.format((batch_idx+1)))
+    '''
     outimg = torch.cat((gt, premax), dim=3)
     for b in range(opt.batch_size):
         outimgb = outimg[b,:,:,:]
         outimgname = os.path.join(outimgpath, train, '{}.png'.format((batch_idx*opt.batch_size+b+1)))
         save_image(outimgb , outimgname , padding=0)
         # print(img.shape, gt.shape, premax.shape, outimg.shape)
-
+    '''
+    # 改用拼接3张的（可拼接不同通道）
+    batch_data = (img, gt, premax)
+    imgObject = visualize.Save_img3(batch_data, outimgname)
+    imgObject.save()
 
 
 
@@ -329,4 +408,3 @@ if __name__ == '__main__':
     plt.ylabel('Fwiou')
     plt.show()
     plt.savefig(os.path.join(opt.image_path, 'fwiou.png'))
-    

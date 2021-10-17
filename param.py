@@ -13,11 +13,13 @@ def parser():
     parser = argparse.ArgumentParser()
     
     # epoch和batch
-    parser.add_argument("--n_epochs", type=int, default=3)
+    parser.add_argument("--n_epochs", type=int, default=2)
     parser.add_argument("--batch_size", type=int, default=1)
 
     # Adma参数
     parser.add_argument("--lr", type=float, default=0.00001)
+    # 根据segformer论文，lr=0.00006，使用系数为1的poly学习率衰减
+    # parser.add_argument("--lr", type=float, default=0.00006)
     parser.add_argument("--b1", type=float, default=0.9)
     parser.add_argument("--b2", type=float, default=0.999)
 
