@@ -4,8 +4,8 @@ import torch
 from torch import nn, einsum
 import torch.nn.functional as F
 
-from einops import rearrange, reduce
-from einops.layers.torch import Rearrange
+# from einops import rearrange, reduce
+# from einops.layers.torch import Rearrange
 
 from segformer import MiT_all
 
@@ -51,6 +51,7 @@ class PreNorm(nn.Module):
     def forward(self, x):
         return self.fn(self.norm(x))
 
+'''
 class EfficientSelfAttention(nn.Module):
     def __init__(
         self,
@@ -161,6 +162,7 @@ class MiT(nn.Module):
 
         ret = x if not return_layer_outputs else layer_outputs
         return ret
+'''
 
 class Segformer(nn.Module):
     # depths=[3, 6, 40, 3] 未知
@@ -183,8 +185,8 @@ class Segformer(nn.Module):
         assert all([*map(lambda t: len(t) == 4, (dims, heads, ff_expansion, reduction_ratio, num_layers))]
                    ), 'only four stages are allowed, all keyword arguments must be either a single value or a tuple of 4 values'
 
-        self.mit = MiT(channels = channels, dims = dims, heads = heads, ff_expansion = ff_expansion,
-                       reduction_ratio = reduction_ratio, num_layers = num_layers)
+        # self.mit = MiT(channels = channels, dims = dims, heads = heads, ff_expansion = ff_expansion,
+                       # reduction_ratio = reduction_ratio, num_layers = num_layers)
         
         self.mitb5 = MiT_all.mit_b5()
 

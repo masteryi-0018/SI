@@ -5,7 +5,6 @@ Created on Fri Oct 15 17:01:22 2021
 @author: masteryi
 """
 
-
 from PIL import Image
 import numpy as np
 
@@ -27,8 +26,7 @@ class Save_img3():
             # Add 0.5 after unnormalizing to [0, 255] to round to nearest integer
             # imgs = imgs.mul_(255).add_(0.5).clamp_(0, 255).numpy().transpose((0, 2, 3, 1))
             # 交换了通道也没发现什么作用...
-            imgsbgr = (imgs*255).numpy().transpose((0, 2, 3, 1))
-            imgs = imgsbgr[:,:,::-1]
+            imgs = (imgs*255).numpy().transpose((0, 2, 3, 1))
         
         # single channel img
         elif imgs.shape[1] == 1:

@@ -349,14 +349,15 @@ def mean(l, ignore_nan=False, empty=0):
 
 
 '''OHEM'''
-def ohem_loss(criterion, premax, gt, keep_num):
-    if criterion == 'ce':
+def ohem_loss(loss_name, premax, gt, keep_num):
+    if loss_name == 'ce':
         criterion = CrossEntropyLoss2d(reduction="none")
-    elif criterion == 'lovasz':
-        criterion = LovaszSoftmax() # 暂时不会使用
-    elif criterion == 'focal':
+    elif loss_name == 'lovasz':
+        loss = OhemCrossEntropy_2D() # 暂时不会使用
+        return loss(premax, gt)
+    elif loss_name == 'focal':
         criterion = FocalLoss(reduction="none")
-    elif criterion == 'dice':
+    elif loss_name == 'dice':
         criterion = DiceLoss(reduction="none")
     
     loss = criterion(premax, gt)
@@ -368,3 +369,40 @@ def ohem_loss(criterion, premax, gt, keep_num):
     # print(loss_keep.shape) # torch.Size([3, 640, 640]) 可以发现少了一个样本的loss
     
     return loss_keep.sum() / (keep_num*h*w)
+
+
+
+class OhemCrossEntropy_2D(nn.Module):
+    def __init__(self, ignore_index=255, thresh=0.6, min_kept=350000, weight=None):
+        super(OhemCrossEntropy_2D, self).__init__()
+        self.thresh = thresh
+        self.min_kept = max(1, min_kept)
+        self.ignore_index = ignore_index
+        self.weight = weight
+        
+        self.criterion = nn.CrossEntropyLoss(weight=weight, ignore_index=ignore_index, reduction="none")
+        self.ls = LovaszSoftmax(ignore_index=self.ignore_index)
+        
+        self.nll = nn.NLLLoss(weight=weight, ignore_index=self.ignore_index, reduction="none")
+        # print(weight)
+    
+    def forward(self, score, target, **kwargs):
+        ph, pw = score.size(2), score.size(3)
+        h, w = target.size(1), target.size(2)
+        if ph != h or pw != w:
+            score = F.upsample(input=score, size=(h, w), mode="bilinear")
+        
+        pred = F.softmax(score, dim=1)
+        pixel_losses = (self.criterion(score, target) + self.ls(pred, target)).contiguous().view(-1)
+        mask = target.contiguous().view(-1) != self.ignore_index
+
+        tmp_target = target.clone()
+        tmp_target[tmp_target == self.ignore_index] = 0
+        pred = pred.gather(1, tmp_target.unsqueeze(1))
+        pred, ind = pred.contiguous().view(-1,)[mask].contiguous().sort()
+        min_value = pred[min(self.min_kept, pred.numel() - 1)]
+        threshold = max(min_value, self.thresh)
+        pixel_losses = pixel_losses[mask][ind]
+        pixel_losses = pixel_losses[pred < threshold]
+        return pixel_losses.mean()
+    
