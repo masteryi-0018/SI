@@ -59,7 +59,7 @@
    - **虽然是平行连接多个CNN，但是最终计算loss时只用第一个高分辨率子网络的输出，即out_aux**
 
 3. segmenter
-    
+   
     - lr = 0.00001
     - Lovasz loss
     - scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
@@ -146,14 +146,14 @@
 - segformer
 - segmenter
 
-dataset.py  ——读取数据集
-losses.py   ——各种损失函数
-main.py     ——程序入口
-metrics.py  ——各种评价指标
-param.py    ——参数和路径
-preposs.py  ——对数据集预处理
-readme.md   ——readme
-solver.py   ——训练和验证
-visualize   --可视化
+readme.md    —readme
+dataset.py   —读取数据集
+losses.py    —各种损失函数
+main.py      —程序入口
+metrics.py   —各种评价指标
+param.py     —参数和路径
+preposs.py   —对数据集预处理
+solver.py    —训练和验证
+visualize    —可视化
 ```
 

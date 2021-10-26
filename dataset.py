@@ -22,6 +22,8 @@ class Seaice(Dataset):
         self.transform = transform
         self.imgnamelist = os.listdir(self.imgpath)
         self.gtnamelist = os.listdir(self.gtpath)
+        self.imgnamelist.sort()
+        self.gtnamelist.sort()
         
     def __getitem__(self, idx):
         imgname = os.path.join(self.datapath, 'image', self.imgnamelist[idx])

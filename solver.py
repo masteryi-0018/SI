@@ -9,11 +9,10 @@ import os
 import torch
 # import time
 import torch.nn as nn
-import torch.optim as optim
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 # import torch.nn.functional as F
-from torchvision.utils import save_image
+# from torchvision.utils import save_image
 from datetime import datetime
 from torch.utils.data import random_split
 import matplotlib.pyplot as plt
@@ -23,10 +22,10 @@ import logging
 import param
 import dataset
 import visualize
-import buildmodel
+import build
 
+from losses import ohem_loss
 from metrics import SegmentationMetric
-from losses import CrossEntropyLoss2d, FocalLoss, DiceLoss, LovaszSoftmax, ohem_loss
 
 
 
@@ -36,44 +35,34 @@ def solver(opt):
     
     # 模型 损失 优化器 学习率
     # modeldct = {'deeplab':deeplab, 'hrocr':hrocr, 'segmenter':segmenter, 'segformer':segformer}
-    model = buildmodel.build(opt)
+    model = build.model(opt)
     
     
     # criterion = nn.CrossEntropyLoss() criterion = nn.BCEWithLogitsLoss() criterion = nn.BCELoss()
     # 二分类用BCE 多分类用CE BCEwithlogitsloss = BCELoss + Sigmoid
     # 增加reduction="none" 使其不求平均 返回每个loss，这个在ohem中写了
-    ce = CrossEntropyLoss2d()
-    focal = FocalLoss()
-    dice = DiceLoss()
-    lovasz = LovaszSoftmax()
-    lossfuncdct = {'ce':ce, 'focal':focal, 'dice':dice, 'lovasz':lovasz}
-    criterion = lossfuncdct[opt.lossfunc]
+    # lossfuncdct = {'ce':ce, 'focal':focal, 'dice':dice, 'lovasz':lovasz}
+    criterion = build.lossfunc(opt)
     
     
     # 设定device
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # device = torch.device("cuda:0")
-    model.to(device)
-    criterion.to(device) # 损失函数需要放在cuda嘛？
     if torch.cuda.device_count() > 1:
         print("Let's use", torch.cuda.device_count(), "GPUs!")
         # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
-        # torch.distributed.init_process_group(backend="nccl")
-        model = nn.DataParallel(model) # device_ids=[0,1,2,3]
-        # model = nn.parallel.DistributedDataParallel(model) # 建议使用DDP方式
+        # model = nn.DataParallel(model, device_ids=[0,1,2,3])
+        model = nn.DataParallel(model)
+    model.to(device)
     
     
-    adam = optim.Adam(model.parameters(), opt.lr, (opt.b1, opt.b2))
-    sgd = optim.SGD(model.parameters(), lr=opt.lr, momentum=opt.momentum, dampening=0, weight_decay=0, nesterov=False)
-    optimizerdct = {'adam':adam, 'sgd':sgd}
-    optimizer = optimizerdct[opt.optim]
+    # optimizerdct = {'adam':adam, 'sgd':sgd}
+    optimizer = build.optimizer(opt, model)
     
 
     # Note that step should be called after validate()    
-    step = optim.lr_scheduler.StepLR(optimizer, step_size=opt.step, gamma=opt.gamma, verbose=True)
-    exponential = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.98, last_epoch=-1, verbose=True)
-    schedulerdct = {'step':step, 'exponential':exponential}
-    scheduler = schedulerdct[opt.schedule]
+    # schedulerdct = {'step':step, 'exponential':exponential}
+    scheduler = build.scheduler(opt, optimizer)
     
     
     os.makedirs(opt.model_path, exist_ok=True)
@@ -88,11 +77,12 @@ def solver(opt):
     fwiou_all = []
     val_loss_all = []
     val_fwiou_all = []
+
     
     for epoch in range(opt.n_epochs):
         starttime = datetime.now()
         
-        trainloader, validloader = datatransform(epoch, opt)
+        trainloader, validloader = datatransform(opt)
         n_batchs = len(trainloader)
         
         # 训练
@@ -139,7 +129,7 @@ def solver(opt):
 
 
 
-def datatransform(epoch, opt):
+def datatransform(opt):
     # 数据集和变换，随机应用一种resize
     transform_1 = transforms.Compose([transforms.ToTensor()])
     transform_2 = transforms.Compose([transforms.ToTensor(), transforms.Resize(640)])
@@ -157,7 +147,7 @@ def datatransform(epoch, opt):
     train_size = int(opt.trainrate * len(data))
     valid_size = len(data) - train_size
     # 自动分，函数很好用
-    trainset, validset = random_split(dataset=data, lengths=[train_size, valid_size], generator=torch.Generator().manual_seed(1))
+    trainset, validset = random_split(dataset=data, lengths=[train_size, valid_size], generator=torch.Generator().manual_seed(0))
     
     # 超算 num_workers=16, pin_memory=True, drop_last=True
     # 这里为什么不能加num_workers=10？
