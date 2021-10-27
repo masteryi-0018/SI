@@ -18,6 +18,7 @@ from torch.utils.data import random_split
 import matplotlib.pyplot as plt
 import random
 import logging
+import torch.multiprocessing as mp
 
 import param
 import dataset
@@ -47,13 +48,15 @@ def solver(opt):
     
     # 设定device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # device = torch.device("cuda:0")
+    model.to(device)
     if torch.cuda.device_count() > 1:
         print("Let's use", torch.cuda.device_count(), "GPUs!")
         # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
         # model = nn.DataParallel(model, device_ids=[0,1,2,3])
-        model = nn.DataParallel(model)
-    model.to(device)
+        model = nn.DataParallel(model) # 默认分配到所有的GPU上面
+    
+    # torch.backends.cudnn.deterministic = False
+    # torch.backends.cudnn.benchmark = True
     
     
     # optimizerdct = {'adam':adam, 'sgd':sgd}
@@ -82,7 +85,10 @@ def solver(opt):
     for epoch in range(opt.n_epochs):
         starttime = datetime.now()
         
-        trainloader, validloader = datatransform(opt)
+        if opt.multi == True:
+            trainloader, validloader = datatransform_multi(opt)
+        else:
+            trainloader, validloader = datatransform(opt)
         n_batchs = len(trainloader)
         
         # 训练
@@ -130,6 +136,22 @@ def solver(opt):
 
 
 def datatransform(opt):
+    transform = transforms.Compose([transforms.ToTensor()])
+    data = dataset.Seaice(opt, transform=transform)
+    
+    train_size = int(opt.trainrate * len(data))
+    valid_size = len(data) - train_size
+    
+    trainset, validset = random_split(dataset=data, lengths=[train_size, valid_size], generator=torch.Generator().manual_seed(0))
+    
+    trainloader = DataLoader(dataset=trainset, batch_size=opt.batch_size, shuffle=True, drop_last=True, pin_memory=True)
+    validloader = DataLoader(dataset=validset, batch_size=opt.batch_size, shuffle=True, drop_last=True, pin_memory=True)
+    
+    return trainloader, validloader
+
+
+
+def datatransform_multi(opt):
     # 数据集和变换，随机应用一种resize
     transform_1 = transforms.Compose([transforms.ToTensor()])
     transform_2 = transforms.Compose([transforms.ToTensor(), transforms.Resize(640)])
@@ -150,7 +172,6 @@ def datatransform(opt):
     trainset, validset = random_split(dataset=data, lengths=[train_size, valid_size], generator=torch.Generator().manual_seed(0))
     
     # 超算 num_workers=16, pin_memory=True, drop_last=True
-    # 这里为什么不能加num_workers=10？
     trainloader = DataLoader(dataset=trainset, batch_size=opt.batch_size, shuffle=True, drop_last=True, pin_memory=True)
     validloader = DataLoader(dataset=validset, batch_size=opt.batch_size, shuffle=True, drop_last=True, pin_memory=True)
     
@@ -193,7 +214,7 @@ def train(trainloader, model, criterion, optimizer, device, n_batchs, epoch, opt
         
         
         # 训练时使用ohem，根据epoch调整
-        if epoch > opt.useohem:
+        if epoch >= opt.useohem:
             keepnum = round(opt.batch_size*0.75) if opt.batch_size != 2 else 1
             loss = ohem_loss(opt.lossfunc, premax, gt, keepnum)
         else:
@@ -319,22 +340,3 @@ def createlogger(opt):
 
 if __name__ == '__main__':
     opt = param.parser()
-    
-    loss_all, fwiou_all, val_loss_all, val_fwiou_all = solver(opt)
-    counter = [i+1 for i in range(opt.n_epochs)]
-    
-    plt.plot(counter, loss_all, color='blue')
-    plt.plot(counter, val_loss_all, color='green')
-    plt.legend(['Train Loss', 'Valid Loss'], loc='best')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.show()
-    plt.savefig(os.path.join(opt.image_path, 'loss.png'))
-
-    plt.plot(counter, fwiou_all, color='blue')
-    plt.plot(counter, val_fwiou_all, color='green')
-    plt.legend(['Train Fwiou', 'Valid Fwiou'], loc='best')
-    plt.xlabel('Epoch')
-    plt.ylabel('Fwiou')
-    plt.show()
-    plt.savefig(os.path.join(opt.image_path, 'fwiou.png'))

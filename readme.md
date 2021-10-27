@@ -66,7 +66,7 @@
     
     - 对学习率十分敏感
     
-    - 由于官方代码给了2种decoder架构：`DecoderLinear`、`MaskTransformer`
+    - 官方代码给了2种decoder架构：`DecoderLinear`、`MaskTransformer`
     
     - 问题
     
@@ -74,10 +74,10 @@
     
       - 解决方案：先交换维度，再reshape就可以
     
-    ```python
-    x = x.permute(0,2,1)
-    x = x.reshape(1, self.n_cls, GS, -1)
-    ```
+      ```python
+      x = x.permute(0,2,1)
+      x = x.reshape(1, self.n_cls, GS, -1)
+      ```
 
 4. segformer
 
@@ -110,28 +110,35 @@
 
 - train / valid = 8 / 2
 - n_epoch = 300
-- batch_size = 16（模型为transformer架构时需要调整为1）
+- batch_size = 8（模型为transformer架构时需要调整为1）
 - transform = transforms.Compose([transforms.ToTensor()])（默认）
 - optimizer = optim.Adam(model.parameters())（默认）
 - 训练策略
   - 多尺度训练，分别选择1.25x、1x、0.75x，共3种情况
     - 依次循环进行训练
     - 每一个epoch随机选择其中一个尺度进行训练（ours）
-  - OHEM，使用了CE loss
-    - 在50轮之后加入OHEM
-    - 下一步将CE loss换成Lovasz
+  - OHEM，适配了各种loss
+    - 在150轮之后加入OHEM
+    - 其中Lovasz loss为特殊的class
 
 ### 后处理
 
 1. 多模型融合
    - 软投票
    - 硬投票
-   - 心得：如果选择的模型本身指标不高，会导致低指标模型将高指标模型性能拉低的情况，目前还没有很好的待融合模型
+   - 如果选择的模型本身指标不高，会导致低指标模型将高指标模型性能拉低的情况
+   
 2. CRF
-   - 有的模型上升，有的模型下降
-   - CRF与原始预测图片加权融合，具体实验结果也需要分情况讨论
+   - 只有不同推理次数的CRF
+   - CRF与原始预测图片加权融合
+   - 结果不确定
+   
 3. 旋转预测
-   - 指标一般都会提高
+
+   - 分数低的模型提升
+
+   - 分数高的模型下降
+
 4. 裁剪预测（对于1024与2048的尺寸，裁剪预测再拼接）
    - 直接裁剪拼接
    - 重叠裁剪拼接（需要避免分块效应）
@@ -146,7 +153,8 @@
 - segformer
 - segmenter
 
-readme.md    —readme
+README.md    —readme
+build.py     -建立部分
 dataset.py   —读取数据集
 losses.py    —各种损失函数
 main.py      —程序入口
